@@ -95,6 +95,12 @@ export interface ClientOptions {
 
 export type OnCompleteCallback = (meta: TaskMeta) => void | Promise<void>;
 
+/** NDJSON stream events from POST /task/stream. */
+export type StreamEvent =
+  | { type: "delta"; content: string }
+  | { type: "done"; meta: TaskMeta }
+  | { type: "error"; code: string; message: string };
+
 export class EngineError extends Error {
   code: string;
   attempts: AttemptError[];

@@ -11,6 +11,7 @@ import type {
   ClientOptions,
   EmbedResponse,
   OnCompleteCallback,
+  StreamEvent,
   TaskRequest,
   TaskResponse,
 } from "./types.js";
@@ -183,6 +184,90 @@ export async function embedQuery(
 }
 
 /**
+ * Stream a task from Engine. Returns an async iterator yielding `StreamEvent`s:
+ *   - { type: "delta", content: "..." }   — generated text chunk
+ *   - { type: "done",  meta: { ... } }    — stream finished
+ *   - { type: "error", code: "...", message: "..." }
+ *
+ * Only `task_type: "generate_text"` is supported in streaming mode. Consumers
+ * typically concatenate delta.content into a string and use the done event's
+ * meta for tokens/latency/cost telemetry.
+ *
+ * Example:
+ *   for await (const ev of runTaskStream({ task_type: "generate_text", user_prompt: "Hi" })) {
+ *     if (ev.type === "delta") process.stdout.write(ev.content);
+ *     else if (ev.type === "done") console.log("\n--- tokens:", ev.meta.tokens_out);
+ *     else if (ev.type === "error") throw new EngineError(ev.code, ev.message);
+ *   }
+ */
+export async function* runTaskStream(
+  req: TaskRequest,
+  opts?: ClientOptions,
+): AsyncGenerator<StreamEvent, void, unknown> {
+  const url = resolveBaseUrl(opts);
+  const readTimeoutMs = opts?.readTimeoutMs ?? DEFAULT_READ_TIMEOUT_MS;
+  const { signal, cancel } = withTimeout(readTimeoutMs);
+
+  try {
+    const resp = await fetch(`${url}/task/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_type: req.task_type,
+        model_preference: req.model_preference ?? "fast",
+        system_prompt: req.system_prompt ?? "",
+        user_prompt: req.user_prompt ?? "",
+        max_retries: req.max_retries ?? 1,
+        ...(req.model !== undefined && { model: req.model }),
+        ...(req.context_budget !== undefined && { context_budget: req.context_budget }),
+        ...(req.temperature !== undefined && { temperature: req.temperature }),
+        ...(req.max_tokens !== undefined && { max_tokens: req.max_tokens }),
+        ...(req.runtime !== undefined && { runtime: req.runtime }),
+      }),
+      signal,
+    });
+    if (!resp.ok || !resp.body) {
+      throw new EngineError("HTTP_ERROR", `${resp.status} ${resp.statusText}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let nl: number;
+      while ((nl = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        try {
+          yield JSON.parse(line) as StreamEvent;
+        } catch {
+          // eslint-disable-next-line no-console
+          console.warn("sanctum-engine-client: unparseable stream line:", line.slice(0, 120));
+        }
+      }
+    }
+
+    // Flush any trailing line without newline (unlikely but safe)
+    const tail = buffer.trim();
+    if (tail) {
+      try {
+        yield JSON.parse(tail) as StreamEvent;
+      } catch {
+        /* ignore */
+      }
+    }
+  } finally {
+    cancel();
+  }
+}
+
+/**
  * Run many tasks concurrently. Returns a list aligned with the input;
  * each slot is either `{ result, latencyMs }` on success or the thrown
  * error (so one model's failure doesn't sink the whole batch).
@@ -216,4 +301,5 @@ export type {
   EmbedResponse,
   ClientOptions,
   OnCompleteCallback,
+  StreamEvent,
 } from "./types.js";
