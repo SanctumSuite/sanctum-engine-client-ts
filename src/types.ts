@@ -30,11 +30,20 @@ export interface ChunkingConfig {
   merge_strategy?: string;
 }
 
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
 export interface TaskRequest {
   task_type: TaskType;
   model_preference?: ModelPreference;
+  /** Prompt-pair mode. Ignored when `messages` is set. */
   system_prompt?: string;
+  /** Prompt-pair mode. Ignored when `messages` is set. */
   user_prompt?: string;
+  /** Multi-turn mode. When set, overrides system_prompt + user_prompt. */
+  messages?: ChatMessage[];
   model?: string;
   output_schema?: Record<string, unknown>;
   max_retries?: number;
