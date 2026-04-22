@@ -52,6 +52,9 @@ export interface TaskRequest {
   max_tokens?: number;
   chunking?: ChunkingConfig;
   runtime?: "ollama" | "openrouter";
+  /** Per-request API key for cloud runtimes (OpenRouter). Overrides the
+   *  Engine's server-side key — used by bring-your-own-key apps. */
+  runtime_api_key?: string;
 }
 
 export interface TaskMeta {

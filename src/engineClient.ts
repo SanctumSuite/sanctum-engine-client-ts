@@ -91,6 +91,7 @@ export async function runTask<T = unknown>(
         ...(req.max_tokens !== undefined && { max_tokens: req.max_tokens }),
         ...(req.chunking !== undefined && { chunking: req.chunking }),
         ...(req.runtime !== undefined && { runtime: req.runtime }),
+        ...(req.runtime_api_key !== undefined && { runtime_api_key: req.runtime_api_key }),
       }),
       signal,
     });
@@ -225,6 +226,7 @@ export async function* runTaskStream(
         ...(req.temperature !== undefined && { temperature: req.temperature }),
         ...(req.max_tokens !== undefined && { max_tokens: req.max_tokens }),
         ...(req.runtime !== undefined && { runtime: req.runtime }),
+        ...(req.runtime_api_key !== undefined && { runtime_api_key: req.runtime_api_key }),
       }),
       signal,
     });
